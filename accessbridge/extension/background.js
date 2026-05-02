@@ -37,3 +37,38 @@ chrome.commands.onCommand.addListener(async (command) => {
 chrome.action.onClicked.addListener(async (tab) => {
   await openAccessBridge(tab);
 });
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "SUMMARIZE_TEXT") {
+    fetch("http://localhost:3000/summarize", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(message.payload)
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Backend request failed");
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        sendResponse({
+          ok: true,
+          data
+        });
+      })
+      .catch((error) => {
+        console.error("AccessBridge backend fetch failed:", error);
+
+        sendResponse({
+          ok: false,
+          error: error.message
+        });
+      });
+
+    return true;
+  }
+});

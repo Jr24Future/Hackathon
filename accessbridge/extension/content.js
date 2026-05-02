@@ -1,8 +1,4 @@
 (() => {
-  if (window.__accessBridgeLoaded) {
-    return;
-  }
-
   window.__accessBridgeLoaded = true;
 
   let currentExtractedText = "";
@@ -215,19 +211,16 @@
   }
 
   async function callSummarizer(payload) {
-    const response = await fetch("http://localhost:3000/summarize", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+    const response = await chrome.runtime.sendMessage({
+      type: "SUMMARIZE_TEXT",
+      payload
     });
 
-    if (!response.ok) {
-      throw new Error("Summarizer request failed");
+    if (!response || !response.ok) {
+      throw new Error(response?.error || "Summarizer request failed");
     }
 
-    return response.json();
+    return response.data;
   }
 
   function readOutputAloud() {
