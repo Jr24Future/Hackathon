@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "AccessBridge",
+  "version": "0.1.0",
+  "description": "Summarizes, reads, and flags inaccessible web content for students.",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open AccessBridge"
+  },
+  "commands": {
+    "open-accessbridge": {
+      "suggested_key": {
+        "default": "Alt+X",
+        "mac": "Alt+X"
+      },
+      "description": "Open AccessBridge"
+    }
+    }
+}
