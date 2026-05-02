@@ -81,3 +81,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
+
+//when content.js asks for image analysis it will capture the visible tab and send it to the backend.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "ANALYZE_VISIBLE_SCREENSHOT") {
+    chrome.tabs.captureVisibleTab(
+      sender.tab.windowId,
+      {
+        format: "jpeg",
+        quality: 70
+      },
+      async (imageDataUrl) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({
+            ok: false,
+            error: chrome.runtime.lastError.message
+          });
+          return;
+        }
+
+        try {
+          const response = await fetch("http://localhost:3000/analyze-image", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ imageDataUrl })
+          });
+
+          if (!response.ok) {
+            throw new Error("Backend image analysis request failed");
+          }
+
+          const data = await response.json();
+
+          sendResponse({
+            ok: true,
+            data
+          });
+        } catch (error) {
+          console.error("AccessBridge image analysis failed:", error);
+
+          sendResponse({
+            ok: false,
+            error: error.message
+          });
+        }
+      }
+    );
+
+    return true;
+  }
+});
