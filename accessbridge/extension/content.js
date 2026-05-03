@@ -8,6 +8,10 @@
  */
 
 (() => {
+  if (window.__accessBridgeLoaded) {
+    return;
+  }
+
   window.__accessBridgeLoaded = true;
 
   let currentExtractedText = "";
@@ -33,28 +37,100 @@
     panel.setAttribute("aria-label", "AccessBridge accessibility assistant");
 
     panel.innerHTML = `
-      <h2>AccessBridge</h2>
-      <p class="ab-small">Digital accessibility support for difficult or inaccessible pages.</p>
-
-      <div id="ab-status">
-        Found <strong>${currentExtractedText.length}</strong> characters of readable page text.
+      <div class="ab-header">
+        <div>
+          <div class="ab-eyebrow">Student Accessibility Assistant</div>
+          <h2>AccessBridge</h2>
+        </div>
+        <button id="ab-close" class="ab-icon-button" aria-label="Close AccessBridge">×</button>
       </div>
 
-      <h3>Accessibility scan</h3>
-      <div id="ab-issues">${renderIssues(currentIssues)}</div>
+      <p class="ab-intro">
+        Turn difficult or inaccessible page content into a summary, audio, or accessibility report.
+      </p>
 
-      <h3>Actions</h3>
-      <button id="ab-summarize">Summarize page</button>
-      <button id="ab-simplify">Simplify language</button>
-      <button id="ab-image">Explain screenshot / OCR</button>
-      <button id="ab-read">Read aloud</button>
-      <button id="ab-stop">Stop reading</button>
-      <button id="ab-report">Generate barrier report</button>
-      <button id="ab-copy">Copy output</button>
-      <button id="ab-close">Close</button>
+      <div class="ab-status-grid" aria-label="Page scan summary">
+        <div class="ab-stat-card">
+          <span class="ab-stat-number">${currentExtractedText.length.toLocaleString()}</span>
+          <span class="ab-stat-label">readable characters</span>
+        </div>
 
-      <h3>Output</h3>
-      <textarea id="ab-output" aria-label="AccessBridge output"></textarea>
+        <div class="ab-stat-card">
+          <span class="ab-stat-number">${currentIssues.length}</span>
+          <span class="ab-stat-label">possible barriers</span>
+        </div>
+      </div>
+
+      <section class="ab-section">
+        <div class="ab-section-title-row">
+          <h3>Accessibility scan</h3>
+          <span class="ab-pill">${currentIssues.length === 0 ? "Looks okay" : "Needs review"}</span>
+        </div>
+        <div id="ab-issues">${renderIssues(currentIssues)}</div>
+      </section>
+
+      <section class="ab-section">
+        <h3>Student support actions</h3>
+
+        <div class="ab-button-grid">
+          <button id="ab-summarize" class="ab-button ab-button-primary">
+            <span class="ab-button-title">Summarize page</span>
+            <span class="ab-button-subtitle">Short plain-language overview</span>
+          </button>
+
+          <button id="ab-simplify" class="ab-button">
+            <span class="ab-button-title">Simplify language</span>
+            <span class="ab-button-subtitle">Make dense text easier to read</span>
+          </button>
+
+          <button id="ab-image" class="ab-button">
+            <span class="ab-button-title">Explain screenshot / OCR</span>
+            <span class="ab-button-subtitle">Read visible text and images</span>
+          </button>
+
+          <button id="ab-read" class="ab-button">
+            <span class="ab-button-title">Read aloud</span>
+            <span class="ab-button-subtitle">Listen to the output</span>
+          </button>
+
+          <button id="ab-stop" class="ab-button ab-button-muted">
+            <span class="ab-button-title">Stop reading</span>
+            <span class="ab-button-subtitle">Cancel speech playback</span>
+          </button>
+
+          <button id="ab-report" class="ab-button">
+            <span class="ab-button-title">Generate barrier report</span>
+            <span class="ab-button-subtitle">Create a message for SAS or IT</span>
+          </button>
+
+          <button id="ab-highlight" class="ab-button">
+            <span class="ab-button-title">Highlight barriers</span>
+            <span class="ab-button-subtitle">Show possible issues on the page</span>
+          </button>
+
+          <button id="ab-clear-highlights" class="ab-button ab-button-muted">
+            <span class="ab-button-title">Clear highlights</span>
+            <span class="ab-button-subtitle">Remove page markings</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="ab-section">
+        <div class="ab-section-title-row">
+          <h3>Output</h3>
+          <button id="ab-copy" class="ab-small-button">Copy</button>
+        </div>
+
+        <textarea 
+          id="ab-output" 
+          aria-label="AccessBridge output"
+          placeholder="Your summary, simplified version, OCR result, or barrier report will appear here."
+        ></textarea>
+      </section>
+
+      <div class="ab-privacy-note">
+        AccessBridge only scans when you open it. Screenshots are sent only when you click screenshot/OCR.
+      </div>
     `;
 
     document.body.appendChild(panel);
@@ -62,6 +138,8 @@
     document.getElementById("ab-summarize").addEventListener("click", summarizePage);
     document.getElementById("ab-simplify").addEventListener("click", simplifyPage);
     document.getElementById("ab-image").addEventListener("click", analyzeVisibleScreenshot);
+    document.getElementById("ab-highlight").addEventListener("click", highlightBarriers);
+    document.getElementById("ab-clear-highlights").addEventListener("click", clearHighlights);
     document.getElementById("ab-read").addEventListener("click", readOutputAloud);
     document.getElementById("ab-stop").addEventListener("click", stopReading);
     document.getElementById("ab-report").addEventListener("click", generateBarrierReport);
@@ -176,19 +254,41 @@
   // converts it into a HTML so it can be displayed in the panel 
   function renderIssues(issues) {
     if (issues.length === 0) {
-      return `<div class="ab-success">No obvious accessibility barriers found by the basic scan.</div>`;
+      return `
+        <div class="ab-empty-state">
+          <strong>No obvious barriers found.</strong>
+          <span>The basic scan did not find missing alt text, missing headings, dense paragraphs, or videos without caption tracks.</span>
+        </div>
+      `;
     }
 
     return `
-      <ul>
+      <div class="ab-issue-list">
         ${issues
-          .map(
-            (issue) =>
-              `<li><strong>${issue.severity}:</strong> ${issue.type} — ${issue.message}</li>`
-          )
+          .map((issue) => {
+            const severityClass = getSeverityClass(issue.severity);
+
+            return `
+              <div class="ab-issue-card ${severityClass}">
+                <div class="ab-issue-topline">
+                  <span class="ab-issue-severity">${issue.severity}</span>
+                  <span class="ab-issue-type">${issue.type}</span>
+                </div>
+                <div class="ab-issue-message">${issue.message}</div>
+              </div>
+            `;
+          })
           .join("")}
-      </ul>
+      </div>
     `;
+  }
+
+  function getSeverityClass(severity) {
+    const normalized = String(severity || "").toLowerCase();
+
+    if (normalized === "high") return "ab-issue-high";
+    if (normalized === "medium") return "ab-issue-medium";
+    return "ab-issue-low";
   }
 
   // communicates with the back end for summarization
@@ -319,24 +419,85 @@ Generated by AccessBridge.`;
   
   // captures the image on the page and sends it to the back end for the OCR 
   async function analyzeVisibleScreenshot() {
-  const output = document.getElementById("ab-output");
-  output.value = "Capturing screenshot and analyzing visible content...";
+    const output = document.getElementById("ab-output");
+    output.value = "Capturing screenshot and analyzing visible content...";
 
-  try {
-    const response = await chrome.runtime.sendMessage({
-      type: "ANALYZE_VISIBLE_SCREENSHOT"
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "ANALYZE_VISIBLE_SCREENSHOT"
+      });
+
+      if (!response || !response.ok) {
+        throw new Error(response?.error || "Image analysis failed");
+      }
+
+      currentSummary = response.data.analysis;
+      output.value = currentSummary;
+    } catch (error) {
+      console.error(error);
+      output.value =
+        "Could not analyze the screenshot. Make sure the backend is running and your API key supports image input.";
+    }
+  }
+
+  function highlightBarriers() {
+    clearHighlights();
+
+    let count = 0;
+
+    const missingAltImages = Array.from(document.images).filter((img) => {
+      return !img.hasAttribute("alt") || img.getAttribute("alt").trim() === "";
     });
 
-    if (!response || !response.ok) {
-      throw new Error(response?.error || "Image analysis failed");
-    }
+    missingAltImages.forEach((img) => {
+      markElement(img, "Missing alt text");
+      count++;
+    });
 
-    currentSummary = response.data.analysis;
-    output.value = currentSummary;
-  } catch (error) {
-    console.error(error);
-    output.value =
-      "Could not analyze the screenshot. Make sure the backend is running and your API key supports image input.";
+    const longParagraphs = Array.from(document.querySelectorAll("p")).filter((p) => {
+      return p.innerText && p.innerText.length > 600;
+    });
+
+    longParagraphs.forEach((p) => {
+      markElement(p, "Dense text");
+      count++;
+    });
+
+    const videosWithoutCaptions = Array.from(document.querySelectorAll("video")).filter((video) => {
+      return video.querySelectorAll("track[kind='captions'], track[kind='subtitles']").length === 0;
+    });
+
+    videosWithoutCaptions.forEach((video) => {
+      markElement(video, "Possible missing captions");
+      count++;
+    });
+
+    const output = document.getElementById("ab-output");
+
+    if (count === 0) {
+      output.value = "No highlightable barriers were found on this page by the basic scan.";
+    } else {
+      output.value = `Highlighted ${count} possible accessibility barrier(s) on the page.`;
+    }
   }
-}
+
+  function markElement(element, labelText) {
+    element.classList.add("ab-highlighted-barrier");
+
+    const label = document.createElement("div");
+    label.className = "ab-highlight-label";
+    label.textContent = `AccessBridge: ${labelText}`;
+
+    element.insertAdjacentElement("beforebegin", label);
+  }
+
+  function clearHighlights() {
+    document.querySelectorAll(".ab-highlighted-barrier").forEach((element) => {
+      element.classList.remove("ab-highlighted-barrier");
+    });
+
+    document.querySelectorAll(".ab-highlight-label").forEach((label) => {
+      label.remove();
+    });
+  }
 })();

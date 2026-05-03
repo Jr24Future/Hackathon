@@ -1,5 +1,3 @@
-server/
-
 # Environment variables / API keys
 .env
 .env.*
