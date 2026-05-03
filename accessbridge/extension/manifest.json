@@ -1,11 +1,18 @@
 {
   "manifest_version": 3,
   "name": "AccessBridge",
-  "version": "0.1.0",
-  "description": "Summarizes, reads, and flags inaccessible web content for students.",
-  "permissions": ["activeTab", "scripting", "tabs"],
+  "version": "0.5.0",
+  "description": "Adapts difficult school websites into readable, listenable, focused, and student-friendly experiences.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage"
+  ],
   "host_permissions": [
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://visa-schilling-caloric.ngrok-free.dev/*",
+    "https://*.ngrok-free.dev/*"
   ],
   "background": {
     "service_worker": "background.js"

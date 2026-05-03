@@ -1,6 +1,16 @@
 //This file will run as the extension background server worker
 // basically it's going to listen for extensions icon clicks keyboard shortcuts and a message from content.js
 
+const ACCESSBRIDGE_BACKEND_URL = "https://visa-schilling-caloric.ngrok-free.dev";
+
+// ngrok / makes every backend request use the same headers.
+function getBackendHeaders(extraHeaders = {}) {
+  return {
+    "ngrok-skip-browser-warning": "true",
+    ...extraHeaders
+  };
+}
+
 //get the current active tab
 async function getCurrentTab() {
   const [tab] = await chrome.tabs.query({
@@ -27,8 +37,8 @@ async function openAccessBridge(tab) {
     files: ["panel.css"]
   });
 
-  await chrome.tabs.sendMessage(tab.id, { //send a message telling it's open
-    type: "ACCESSBRIDGE_OPEN"
+  await chrome.tabs.sendMessage(tab.id, { //send a message telling it to open or close
+    type: "ACCESSBRIDGE_TOGGLE"
   });
 }
 
@@ -43,25 +53,60 @@ chrome.action.onClicked.addListener(async (tab) => { // listens for clicking in 
   await openAccessBridge(tab);
 });
 
+
+async function fetchJson(path, options = {}) {
+  const response = await fetch(`${ACCESSBRIDGE_BACKEND_URL}${path}`, {
+    ...options,
+    headers: getBackendHeaders(options.headers || {})
+  });
+
+  if (!response.ok) {
+    let errorMessage = `Backend request failed with status ${response.status}`;
+
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorData.details || errorMessage;
+    } catch (error) {   // keep the basic status message if the body is not JSON
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+}
+
 // listens from messages from content.js due to it keeps on crashing caused by not being able to handle the back end call 
 //made it so it sends the summary request here and the background calls the back end at 3000 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "PING_BACKEND") {
+    fetchJson("/health")
+      .then((data) => {
+        sendResponse({
+          ok: true,
+          data
+        });
+      })
+      .catch((error) => {
+        console.error("AccessBridge backend health check failed:", error);
+
+        sendResponse({
+          ok: false,
+          error: error.message
+        });
+      });
+
+    return true;
+  }
+
   if (message.type === "SUMMARIZE_TEXT") {
-    // calls open AI API and returns a summary 
-    fetch("http://localhost:3000/summarize", {
+    // calls the local/ngrok backend and returns a summary 
+    fetchJson("/summarize", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(message.payload)
     })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Backend request failed");
-        }
-
-        return response.json();
-      })
       .then((data) => {
         sendResponse({  //sends the successful summary result back to content.js
           ok: true,
@@ -80,10 +125,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       //note return true required because fetch is asynchronous keeps the message channel open until saySO.
     return true;
   }
-});
 
-//when content.js asks for image analysis it will capture the visible tab and send it to the backend.
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "ASK_PAGE") {
+    fetchJson("/ask-page", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(message.payload)
+    })
+      .then((data) => {
+        sendResponse({
+          ok: true,
+          data
+        });
+      })
+      .catch((error) => {
+        console.error("AccessBridge ask-page request failed:", error);
+
+        sendResponse({
+          ok: false,
+          error: error.message
+        });
+      });
+
+    return true;
+  }
+
+  if (message.type === "NATURAL_TTS") {
+    fetchJson("/natural-voice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(message.payload)
+    })
+      .then((data) => {
+        sendResponse({
+          ok: true,
+          data
+        });
+      })
+      .catch((error) => {
+        console.error("AccessBridge natural voice request failed:", error);
+
+        sendResponse({
+          ok: false,
+          error: error.message
+        });
+      });
+
+    return true;
+  }
+
+  //when content.js asks for image analysis it will capture the visible tab and send it to the backend.
   if (message.type === "ANALYZE_VISIBLE_SCREENSHOT") {
     chrome.tabs.captureVisibleTab(
       sender.tab.windowId,
@@ -101,19 +196,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         try {
-          const response = await fetch("http://localhost:3000/analyze-image", {
+          const data = await fetchJson("/analyze-image", {
             method: "POST",
             headers: {
               "Content-Type": "application/json"
             },
             body: JSON.stringify({ imageDataUrl })
           });
-
-          if (!response.ok) {
-            throw new Error("Backend image analysis request failed");
-          }
-
-          const data = await response.json();
 
           sendResponse({
             ok: true,
